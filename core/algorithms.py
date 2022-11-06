@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, Generator, Optional
 
@@ -10,6 +11,7 @@ import models
 @dataclass
 class Info:
     _data: dict
+    src_type: str
     filepath: str
     need_compare: bool
     need_delete_after: bool = False
@@ -55,15 +57,15 @@ class Algorithm:
         )
 
     def compare(self, original_id: int, video_id: int):
-        if result := models.Compare.get_result(original_id, video_id, self.version):
-            return result
+        if (result := models.Compare.get_result(original_id, video_id, self.version)) is None:
+            result = self.do_compare(
+                *map(
+                    models.Signature.set_from_video_id,
+                    [original_id, video_id]
+                )
+            ).save(original_id, video_id).result
 
-        return original_id, video_id, self.do_compare(
-            *map(
-                models.Signature.set_from_video_id,
-                [original_id, video_id]
-            )
-        ).save(original_id, video_id).result
+        return original_id, video_id, result
 
 
 _algo: dict[int, Algorithm] = {
@@ -81,6 +83,8 @@ def get(version: int) -> Algorithm:
     return _algo[version]
 
 
-def download(src_id: int):
-    # TODO
-    ...
+@contextmanager
+def download(info_dict: dict):
+    info: Info = Info(info_dict, **info_dict)
+    if info.src_type == "stored":
+        yield
